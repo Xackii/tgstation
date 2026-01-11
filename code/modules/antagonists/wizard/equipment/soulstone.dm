@@ -24,7 +24,6 @@
 	var/theme = THEME_CULT
 	/// Role check, if any needed
 	var/required_role = /datum/antagonist/cult
-	grind_results = list(/datum/reagent/hauntium = 25, /datum/reagent/silicon = 10) //can be ground into hauntium
 
 /obj/item/soulstone/Initialize(mapload)
 	. = ..()
@@ -32,6 +31,9 @@
 		RegisterSignal(src, COMSIG_BIBLE_SMACKED, PROC_REF(on_bible_smacked))
 	if(!base_name)
 		base_name = initial(name)
+
+/obj/item/soulstone/grind_results()
+	return list(/datum/reagent/hauntium = 25, /datum/reagent/silicon = 10) //can be ground into hauntium
 
 /obj/item/soulstone/update_appearance(updates)
 	. = ..()
@@ -417,7 +419,7 @@
 /obj/item/soulstone/proc/check_menu(mob/user, obj/structure/constructshell/shell)
 	if(!istype(user))
 		return FALSE
-	if(user.incapacitated || !user.is_holding(src) || !user.CanReach(shell, src))
+	if(user.incapacitated || !user.is_holding(src) || !shell.IsReachableBy(user, reach))
 		return FALSE
 	return TRUE
 
@@ -489,7 +491,7 @@
 
 /// Called when a ghost is chosen to become a shade.
 /obj/item/soulstone/proc/on_poll_concluded(mob/living/master, mob/living/victim, mob/dead/observer/ghost)
-	if(isnull(victim) || master.incapacitated || !master.is_holding(src) || !master.CanReach(victim, src))
+	if(isnull(victim) || master.incapacitated || !master.is_holding(src) || !victim.IsReachableBy(master, reach))
 		return FALSE
 	if(isnull(ghost?.client))
 		to_chat(master, span_danger("There were no spirits willing to become a shade."))
@@ -546,7 +548,7 @@
 			else
 				make_new_construct(/mob/living/basic/construct/harvester, target, creator, cultoverride, loc_override)
 
-/proc/make_new_construct(mob/living/basic/construct/ctype, mob/target, mob/stoner = null, cultoverride = FALSE, loc_override = null)
+/proc/make_new_construct(mob/living/basic/construct/ctype, mob/target, mob/stoner = null, cultoverride = FALSE, loc_override = null, ghost_activated = FALSE)
 	if(QDELETED(target))
 		return
 	var/mob/living/basic/construct/newstruct = new ctype(loc_override || get_turf(target))
@@ -560,7 +562,13 @@
 		var/datum/action/innate/seek_master/seek_master = new
 		seek_master.Grant(newstruct)
 
-	if (!target.ckey || isnull(target.mind) || is_banned_from(target.ckey, ROLE_CULTIST))
+	if(ghost_activated)
+		if(isnull(target.mind))
+			newstruct.PossessByPlayer(target.ckey)
+		else
+			target.mind.transfer_to(newstruct, force_key_move = TRUE)
+
+	else if (!target.ckey || isnull(target.mind) || is_banned_from(target.ckey, ROLE_CULTIST))
 		to_chat(stoner, span_userdanger("Shell imbuement failed!"))
 		to_chat(stoner, span_warning("The soul has already fled its mortal frame. You attempt to bring it back..."))
 		target = SSpolling.poll_ghosts_for_target(
@@ -593,7 +601,7 @@
 	var/atom/movable/screen/alert/bloodsense/sense_alert
 	if(newstruct.mind && !IS_CULTIST(newstruct) && ((stoner && IS_CULTIST(stoner)) || cultoverride) && SSticker.HasRoundStarted())
 		newstruct.mind.add_antag_datum(/datum/antagonist/cult/construct)
-	if(IS_CULTIST(stoner) || cultoverride)
+	if(cultoverride || (stoner && IS_CULTIST(stoner)))
 		to_chat(newstruct, span_cult_bold("You are still bound to serve the cult[stoner ? " and [stoner]" : ""], follow [stoner?.p_their() || "their"] orders and help [stoner?.p_them() || "them"] complete [stoner?.p_their() || "their"] goals at all costs."))
 	else if(stoner)
 		to_chat(newstruct, span_boldwarning("You are still bound to serve your creator, [stoner], follow [stoner.p_their()] orders and help [stoner.p_them()] complete [stoner.p_their()] goals at all costs."))
@@ -606,10 +614,27 @@
 /obj/item/soulstone/anybody
 	required_role = null
 
+/obj/item/ectoplasm
+	name = "ectoplasm"
+	desc = "Spooky."
+	gender = PLURAL
+	icon = 'icons/effects/magic.dmi'
+	icon_state = "ectoplasm"
+
+/obj/item/ectoplasm/grind_results()
+	return list(/datum/reagent/hauntium = 25)
+
+/obj/item/ectoplasm/suicide_act(mob/living/user)
+	user.visible_message(span_suicide("[user] is inhaling [src]! It looks like [user.p_theyre()] trying to visit the astral plane!"))
+	return OXYLOSS
+
 /obj/item/soulstone/mystic
 	icon_state = "mystic_soulstone"
 	theme = THEME_WIZARD
 	required_role = /datum/antagonist/wizard
+
+/obj/item/ectoplasm/mystic
+	icon_state = "mysticplasm"
 
 /obj/item/soulstone/anybody/revolver
 	one_use = TRUE
@@ -618,6 +643,10 @@
 /obj/item/soulstone/anybody/purified
 	icon_state = "purified_soulstone"
 	theme = THEME_HOLY
+
+/obj/item/ectoplasm/angelic
+	icon = 'icons/effects/magic.dmi'
+	icon_state = "angelplasm"
 
 /obj/item/soulstone/anybody/chaplain
 	name = "mysterious old shard"
